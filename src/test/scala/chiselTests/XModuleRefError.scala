@@ -2,7 +2,8 @@
 
 // Tests which demonstrate the error conditions and the resulting error
 //   messages for cross-module value reads and writes.
-// Elaboration of OuterAssignExample and OuterReadExample is expected to fail
+// Elaboration of OuterAssignExample and OuterReadExample is expected;
+//   the error messages are intercepted and printed
 
 package chiselTests
 
@@ -71,12 +72,13 @@ class OuterReadExample extends Module {
 }
 
 class XModuleRefError extends ChiselPropSpec {
-
   property("Assign elaboration should fail") {
-    ChiselStage.elaborate { new OuterAssignExample }
+    val errout = intercept[Exception] {ChiselStage.elaborate { new OuterAssignExample }}
+    println(errout)
   }
 
   property("Read elaboration should fail") {
-    ChiselStage.elaborate { new OuterReadExample }
+    val errout = intercept[Exception] {ChiselStage.elaborate { new OuterReadExample }}
+    println(errout)
   }
 }
