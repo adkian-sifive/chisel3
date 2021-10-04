@@ -40,11 +40,11 @@ private[chisel3] object MonoConnect {
   // These are from element-level connection
   def UnreadableSourceException(source: Element, source_mod: BaseModule, context_mod: BaseModule) =
     MonoConnectException(s": Source ($source) in $source_mod is unreadable from current module ($context_mod).")
-  
-  // def UnwritableSinkException(sink: Element, source_mod: BaseModule) =
-  // MonoConnectException(s": Sink ($sink) is unwriteable by current module ($source_mod).")
-  def UnwritableSinkException() =
-    MonoConnectException(": Sink is unwriteable by current module.")
+
+  // may want to add direction here
+  def UnwritableSinkException(sink: Element, source_mod: BaseModule) =
+  MonoConnectException(s": Sink ($sink) is unwriteable by current module ($source_mod).")
+
   def SourceEscapedWhenScopeException =
     MonoConnectException(": Source has escaped the scope of the when in which it was constructed.")
   def SinkEscapedWhenScopeException =
@@ -199,7 +199,7 @@ private[chisel3] object MonoConnect {
     val source = reify(_source)
     // If source has no location, assume in context module
     // This can occur if is a literal, unbound will error previously
-    val sink_mod: BaseModule   = sink.topBinding.location.getOrElse(throw UnwritableSinkException)
+    val sink_mod: BaseModule   = sink.topBinding.location.getOrElse(throw UnwritableSinkException(sink, context_mod))
     val source_mod: BaseModule = source.topBinding.location.getOrElse(context_mod)
 
     val sink_parent = Builder.retrieveParent(sink_mod, context_mod).getOrElse(None)
@@ -223,7 +223,7 @@ private[chisel3] object MonoConnect {
         //    CURRENT MOD   CURRENT MOD
         case (Output,       _) => issueConnect(sink, source)
         case (Internal,     _) => issueConnect(sink, source)
-        case (Input,        _) => throw UnwritableSinkException // UnwritableSinkException(sink, context_mod)
+        case (Input,        _) =>  UnwritableSinkException(sink, context_mod)
       }
     }
 
@@ -245,7 +245,7 @@ private[chisel3] object MonoConnect {
           }
         }
         case (Input,        Output) if (!(connectCompileOptions.dontTryConnectionsSwapped)) => issueConnect(source, sink)
-        case (Input,        _)    => throw UnwritableSinkException
+        case (Input,        _)    => throw UnwritableSinkException(sink, context_mod)
       }
     }
 
@@ -256,8 +256,9 @@ private[chisel3] object MonoConnect {
         //    SINK          SOURCE
         //    CHILD MOD     CURRENT MOD
         case (Input,        _) => issueConnect(sink, source)
-        case (Output,       _) => throw UnwritableSinkException
-        case (Internal,     _) => throw UnwritableSinkException
+          // whats the difference between these two
+        case (Output,       _) => throw UnwritableSinkException(sink, sink_mod)
+        case (Internal,     _) => throw UnwritableSinkException(sink, sink_mod)
       }
     }
 
@@ -271,7 +272,7 @@ private[chisel3] object MonoConnect {
         //    CHILD MOD     CHILD MOD
         case (Input,        Input)  => issueConnect(sink, source)
         case (Input,        Output) => issueConnect(sink, source)
-        case (Output,       _)      => throw UnwritableSinkException
+        case (Output,       _)      => throw UnwritableSinkException(sink, sink_mod)
         case (_,            Internal) => {
           if (!(connectCompileOptions.dontAssumeDirectionality)) {
             issueConnect(sink, source)
@@ -279,7 +280,8 @@ private[chisel3] object MonoConnect {
             throw UnreadableSourceException(source, source_mod, context_mod)
           }
         }
-        case (Internal,     _)      => throw UnwritableSinkException
+          // what is an internal dir?
+        case (Internal,     _)      => throw UnwritableSinkException(sink, sink_mod)
       }
     }
 
