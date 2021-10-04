@@ -38,9 +38,12 @@ import chisel3.internal.sourceinfo.SourceInfo
 private[chisel3] object MonoConnect {
   // These are all the possible exceptions that can be thrown.
   // These are from element-level connection
-  def UnreadableSourceException =
-    MonoConnectException(": Source is unreadable from current module.")
-  def UnwritableSinkException =
+  def UnreadableSourceException(source: Element, source_mod: BaseModule, context_mod: BaseModule) =
+    MonoConnectException(s": Source ($source) in $source_mod is unreadable from current module ($context_mod).")
+  
+  // def UnwritableSinkException(sink: Element, source_mod: BaseModule) =
+  // MonoConnectException(s": Sink ($sink) is unwriteable by current module ($source_mod).")
+  def UnwritableSinkException() =
     MonoConnectException(": Sink is unwriteable by current module.")
   def SourceEscapedWhenScopeException =
     MonoConnectException(": Source has escaped the scope of the when in which it was constructed.")
@@ -220,7 +223,7 @@ private[chisel3] object MonoConnect {
         //    CURRENT MOD   CURRENT MOD
         case (Output,       _) => issueConnect(sink, source)
         case (Internal,     _) => issueConnect(sink, source)
-        case (Input,        _) => throw UnwritableSinkException
+        case (Input,        _) => throw UnwritableSinkException // UnwritableSinkException(sink, context_mod)
       }
     }
 
@@ -238,7 +241,7 @@ private[chisel3] object MonoConnect {
           if (!(connectCompileOptions.dontAssumeDirectionality)) {
             issueConnect(sink, source)
           } else {
-            throw UnreadableSourceException
+            throw UnreadableSourceException(source, source_mod, context_mod)
           }
         }
         case (Input,        Output) if (!(connectCompileOptions.dontTryConnectionsSwapped)) => issueConnect(source, sink)
@@ -273,7 +276,7 @@ private[chisel3] object MonoConnect {
           if (!(connectCompileOptions.dontAssumeDirectionality)) {
             issueConnect(sink, source)
           } else {
-            throw UnreadableSourceException
+            throw UnreadableSourceException(source, source_mod, context_mod)
           }
         }
         case (Internal,     _)      => throw UnwritableSinkException
