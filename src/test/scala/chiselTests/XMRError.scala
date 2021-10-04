@@ -31,10 +31,11 @@ class OuterReadExample extends Module {
   myReg := inner.myReg // ERROR
 }
 
-class XModuleRefError extends ChiselPropSpec {
+class XMRErrorSpec extends ChiselPropSpec {
   property("Assign elaboration should fail") {
     // ChiselStage.elaborate { new OuterAssignExample }
     (new ChiselStage).emitVerilog(new OuterAssignExample, Array("--full-stacktrace"))
+    // (new ChiselStage).emitVerilog(new OuterAssignExample)
     // val errout = intercept[Exception] {ChiselStage.elaborate { new OuterAssignExample }}
     // println(errout)
   }
