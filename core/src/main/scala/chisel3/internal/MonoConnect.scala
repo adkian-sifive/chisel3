@@ -38,34 +38,21 @@ import chisel3.internal.sourceinfo.SourceInfo
 private[chisel3] object MonoConnect {
   // These are all the possible exceptions that can be thrown.
   // These are from element-level connection
-  def UnreadableSourceException(source: Element, source_mod: BaseModule, context_mod: BaseModule) =
-    MonoConnectException(s": Source ($source) in $source_mod is unreadable from current module ($context_mod).")
-
-  // may want to add direction here
-  def UnwritableSinkException(sink: Element, source_mod: BaseModule) =
-  MonoConnectException(s": Sink ($sink) is unwriteable by current module ($source_mod).")
-
-  def SourceEscapedWhenScopeException =
-    MonoConnectException(": Source has escaped the scope of the when in which it was constructed.")
-  def SinkEscapedWhenScopeException =
-    MonoConnectException(": Sink has escaped the scope of the when in which it was constructed.")
-  def UnknownRelationException =
-    MonoConnectException(": Sink or source unavailable to current module.")
-  // These are when recursing down aggregate types
-  def MismatchedVecException =
-    MonoConnectException(": Sink and Source are different length Vecs.")
-  def MissingFieldException(field: String) =
-    MonoConnectException(s": Source Record missing field ($field).")
-  def MismatchedException(sink: String, source: String) =
-    MonoConnectException(s": Sink ($sink) and Source ($source) have different types.")
-  def DontCareCantBeSink =
-    MonoConnectException(": DontCare cannot be a connection sink (LHS)")
-  def AnalogCantBeMonoSink =
-    MonoConnectException(": Analog cannot participate in a mono connection (sink - LHS)")
-  def AnalogCantBeMonoSource =
-    MonoConnectException(": Analog cannot participate in a mono connection (source - RHS)")
-  def AnalogMonoConnectionException =
-    MonoConnectException(": Analog cannot participate in a mono connection (source and sink)")
+  object ExceptionStrings {
+    val unreadableSource: String = "Source in is unreadable from current module"
+    val unwritableSink:   String = "Sink is unwriteable by current module"
+    // TODO fix these
+    val sourceEscaped:    String = "Source has escaped the scope of the when in which it was constructed"
+    val sinkEscaped:      String = "Source has escaped the scope of the when in which it was constructed"
+    val unknownRelation:  String = "Sink or source unavailable to current module"
+    val mismatchedVec:    String = "Sink and Source are different length Vecs"
+    val missingField:     String = "Source Record missing field ($field)"
+    val mismatched:       String = "Sink ($sink) and Source ($source) have different types"
+    val dontCareSink:     String = "DontCare cannot be a connection sink (LHS)"
+    val analogMonoSink:   String = "Analog cannot participate in a mono connection (sink - LHS)"
+    val analogMonoSource: String = "Analog cannot participate in a mono connection (source - RHS)"
+    val analogMonoConn:   String = "Analog cannot participate in a mono connection (source and sink)"
+  }
 
   def checkWhenVisibility(x: Data): Boolean = {
     x.topBinding match {
@@ -119,7 +106,7 @@ private[chisel3] object MonoConnect {
 
       // Handle Vec case
       case (sink_v: Vec[Data @unchecked], source_v: Vec[Data @unchecked]) =>
-        if(sink_v.length != source_v.length) { throw MismatchedVecException }
+        if(sink_v.length != source_v.length) { throw new Exception(ExceptionStrings.mismatchedVec) }
         for(idx <- 0 until sink_v.length) {
           try {
             implicit val compileOptions = connectCompileOptions
@@ -148,7 +135,8 @@ private[chisel3] object MonoConnect {
               case Some(source_sub) => connect(sourceInfo, connectCompileOptions, sink_sub, source_sub, context_mod)
               case None => {
                 if (connectCompileOptions.connectFieldsMustMatch) {
-                  throw MissingFieldException(field)
+                  // FYI this formatted $field
+                  throw new Exception(ExceptionStrings.missingField)
                 }
               }
             }
@@ -170,15 +158,15 @@ private[chisel3] object MonoConnect {
       // Source is DontCare - it may be connected to anything. It generates a defInvalid for the sink.
       case (sink, DontCare) => pushCommand(DefInvalid(sourceInfo, sink.lref))
       // DontCare as a sink is illegal.
-      case (DontCare, _) => throw DontCareCantBeSink
+      case (DontCare, _) => throw new Exception(ExceptionStrings.dontCareSink)
       // Analog is illegal in mono connections.
-      case (_: Analog, _:Analog) => throw AnalogMonoConnectionException
+      case (_: Analog, _:Analog) => throw new Exception(ExceptionStrings.analogMonoConn)
       // Analog is illegal in mono connections.
-      case (_: Analog, _) => throw AnalogCantBeMonoSink
+      case (_: Analog, _) => throw new Exception(ExceptionStrings.analogMonoSink)
       // Analog is illegal in mono connections.
-      case (_, _: Analog) => throw AnalogCantBeMonoSource
+      case (_, _: Analog) => throw new Exception(ExceptionStrings.analogMonoSource)
       // Sink and source are different subtypes of data so fail
-      case (sink, source) => throw MismatchedException(sink.toString, source.toString)
+      case (sink, source) => throw new Exception(ExceptionStrings.mismatched)
     }
 
   // This function (finally) issues the connection operation
@@ -199,7 +187,7 @@ private[chisel3] object MonoConnect {
     val source = reify(_source)
     // If source has no location, assume in context module
     // This can occur if is a literal, unbound will error previously
-    val sink_mod: BaseModule   = sink.topBinding.location.getOrElse(throw UnwritableSinkException(sink, context_mod))
+    val sink_mod: BaseModule   = sink.topBinding.location.getOrElse(throw new Exception(ExceptionStrings.unwritableSink))
     val source_mod: BaseModule = source.topBinding.location.getOrElse(context_mod)
 
     val sink_parent = Builder.retrieveParent(sink_mod, context_mod).getOrElse(None)
@@ -209,11 +197,11 @@ private[chisel3] object MonoConnect {
     val source_direction = BindingDirection.from(source.topBinding, source.direction)
 
     if (!checkWhenVisibility(sink)) {
-      throw SinkEscapedWhenScopeException
+      throw new Exception(ExceptionStrings.sinkEscaped)
     }
 
     if (!checkWhenVisibility(source)) {
-      throw SourceEscapedWhenScopeException
+      throw new Exception(ExceptionStrings.sourceEscaped)
     }
 
     // CASE: Context is same module that both left node and right node are in
@@ -223,7 +211,7 @@ private[chisel3] object MonoConnect {
         //    CURRENT MOD   CURRENT MOD
         case (Output,       _) => issueConnect(sink, source)
         case (Internal,     _) => issueConnect(sink, source)
-        case (Input,        _) =>  UnwritableSinkException(sink, context_mod)
+        case (Input,        _) => throw new Exception(ExceptionStrings.unwritableSink)
       }
     }
 
@@ -241,11 +229,14 @@ private[chisel3] object MonoConnect {
           if (!(connectCompileOptions.dontAssumeDirectionality)) {
             issueConnect(sink, source)
           } else {
-            throw UnreadableSourceException(source, source_mod, context_mod)
+            // TODO this should not need to make an exception like this
+            //  once ThrowException() function is in place. ThrowException()
+            //  shall take the string as an argument
+            throw new Exception(ExceptionStrings.unreadableSource)
           }
         }
         case (Input,        Output) if (!(connectCompileOptions.dontTryConnectionsSwapped)) => issueConnect(source, sink)
-        case (Input,        _)    => throw UnwritableSinkException(sink, context_mod)
+        case (Input,        _)    => throw new Exception(ExceptionStrings.unreadableSource)
       }
     }
 
@@ -256,9 +247,9 @@ private[chisel3] object MonoConnect {
         //    SINK          SOURCE
         //    CHILD MOD     CURRENT MOD
         case (Input,        _) => issueConnect(sink, source)
-          // whats the difference between these two
-        case (Output,       _) => throw UnwritableSinkException(sink, sink_mod)
-        case (Internal,     _) => throw UnwritableSinkException(sink, sink_mod)
+        // whats the difference between these two
+        case (Output,       _) => throw new Exception(ExceptionStrings.unwritableSink)
+        case (Internal,     _) => throw new Exception(ExceptionStrings.unwritableSink)
       }
     }
 
@@ -272,21 +263,21 @@ private[chisel3] object MonoConnect {
         //    CHILD MOD     CHILD MOD
         case (Input,        Input)  => issueConnect(sink, source)
         case (Input,        Output) => issueConnect(sink, source)
-        case (Output,       _)      => throw UnwritableSinkException(sink, sink_mod)
+        case (Output,       _)      => throw new Exception(ExceptionStrings.unwritableSink)
         case (_,            Internal) => {
           if (!(connectCompileOptions.dontAssumeDirectionality)) {
             issueConnect(sink, source)
           } else {
-            throw UnreadableSourceException(source, source_mod, context_mod)
+            throw new Exception(ExceptionStrings.unreadableSource)
           }
         }
-          // what is an internal dir?
-        case (Internal,     _)      => throw UnwritableSinkException(sink, sink_mod)
+        // what is an internal dir?
+        case (Internal,     _)      => throw new Exception(ExceptionStrings.unwritableSink)
       }
     }
 
     // Not quite sure where left and right are compared to current module
     // so just error out
-    else throw UnknownRelationException
+    else throw new Exception(ExceptionStrings.unknownRelation)
   }
 }
