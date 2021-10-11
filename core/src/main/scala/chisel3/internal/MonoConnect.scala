@@ -12,6 +12,25 @@ import scala.language.experimental.macros
 import chisel3.internal.sourceinfo.SourceInfo
 
 /**
+  * This class should contain all necessary information to initialize
+  *  and (in case of a failure) trace a MonoConnect.connect call
+  */
+class ConnTrace(sourceInfo: SourceInfo, connectCompileOptions: CompileOptions,
+  sink: Data, source: Data,
+  context_mod: RawModule) { // TODO: do something with this
+  ports.sinks :+ sink
+  ports.sources :+ source
+  object ports {
+    val sinks: Vector[Data] = Vector();
+    val sources: Vector[Data] = Vector();
+  }
+  object context_modules {
+    val sink_mod: Vector[BaseModule] = Vector();
+    val source_mod: Vector[BaseModule] = Vector();
+  }
+}
+
+/**
 * MonoConnect.connect executes a mono-directional connection element-wise.
 *
 * Note that this isn't commutative. There is an explicit source and sink
@@ -54,6 +73,13 @@ private[chisel3] object MonoConnect {
     val analogMonoConn:   String = "Analog cannot participate in a mono connection (source and sink)"
   }
 
+
+
+  
+  def ThrowException() = {
+
+  }
+
   def checkWhenVisibility(x: Data): Boolean = {
     x.topBinding match {
       case mp: MemoryPortBinding => true // TODO (albert-magyar): remove this "bridge" for odd enable logic of current CHIRRTL memories
@@ -67,50 +93,48 @@ private[chisel3] object MonoConnect {
   * There is some cleverness in the use of internal try-catch to catch exceptions
   * during the recursive decent and then rethrow them with extra information added.
   * This gives the user a 'path' to where in the connections things went wrong.
-  */
-  def connect(
-      sourceInfo: SourceInfo,
-      connectCompileOptions: CompileOptions,
-      sink: Data,
-      source: Data,
-      context_mod: RawModule): Unit =
-    (sink, source) match {
+    */
 
+  def connectImpl(conn_trace: ConnTrace): Unit =
+    (conn_trace.ports.sinks.last, conn_trace.ports.sources.last) match {
+      
       // Handle legal element cases, note (Bool, Bool) is caught by the first two, as Bool is a UInt
       case (sink_e: Bool, source_e: UInt) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: UInt, source_e: Bool) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: UInt, source_e: UInt) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: SInt, source_e: SInt) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: FixedPoint, source_e: FixedPoint) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: Interval, source_e: Interval) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: Clock, source_e: Clock) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: AsyncReset, source_e: AsyncReset) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: ResetType, source_e: Reset) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: Reset, source_e: ResetType) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: EnumType, source_e: UnsafeEnum) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: EnumType, source_e: EnumType) if sink_e.typeEquivalent(source_e) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
       case (sink_e: UnsafeEnum, source_e: UInt) =>
-        elemConnect(sourceInfo, connectCompileOptions, sink_e, source_e, context_mod)
+        elemConnect(conn_trace)
 
       // Handle Vec case
       case (sink_v: Vec[Data @unchecked], source_v: Vec[Data @unchecked]) =>
         if(sink_v.length != source_v.length) { throw new Exception(ExceptionStrings.mismatchedVec) }
         for(idx <- 0 until sink_v.length) {
           try {
-            implicit val compileOptions = connectCompileOptions
-            connect(sourceInfo, connectCompileOptions, sink_v(idx), source_v(idx), context_mod)
+            // implicit val compileOptions = conn_trace.connectCompileOptions
+            conn_trace.ports.sinks   :+ sink_v(idx)
+            conn_trace.ports.sources :+ source_v(idx)
+            connect(conn_trace)
           } catch {
             case MonoConnectException(message) => throw MonoConnectException(s"($idx)$message")
           }
@@ -119,8 +143,9 @@ private[chisel3] object MonoConnect {
       case (sink_v: Vec[Data @unchecked], DontCare) =>
         for(idx <- 0 until sink_v.length) {
           try {
-            implicit val compileOptions = connectCompileOptions
-            connect(sourceInfo, connectCompileOptions, sink_v(idx), source, context_mod)
+            // implicit val compileOptions = connectCompileOptions
+            conn_trace.ports.sinks   :+ sink_v(idx)
+            connect(conn_trace)
           } catch {
             case MonoConnectException(message) => throw MonoConnectException(s"($idx)$message")
           }
@@ -131,11 +156,18 @@ private[chisel3] object MonoConnect {
         // For each field, descend with right
         for((field, sink_sub) <- sink_r.elements) {
           try {
+            conn_trace.ports.sinks :+ sink_sub
             source_r.elements.get(field) match {
-              case Some(source_sub) => connect(sourceInfo, connectCompileOptions, sink_sub, source_sub, context_mod)
+              case Some(source_sub) => {
+                conn_trace.ports.sources :+ source_sub
+                connect(conn_trace)
+              }
               case None => {
-                if (connectCompileOptions.connectFieldsMustMatch) {
+                if (conn_trace.connectCompileOptions.connectFieldsMustMatch) {
                   // FYI this formatted $field
+
+                  throw throwException(vec([...]) :+ (from current recursive))
+                  // case class ^
                   throw new Exception(ExceptionStrings.missingField)
                 }
               }
@@ -149,7 +181,8 @@ private[chisel3] object MonoConnect {
         // For each field, descend with right
         for((field, sink_sub) <- sink_r.elements) {
           try {
-            connect(sourceInfo, connectCompileOptions, sink_sub, source, context_mod)
+            conn_trace.ports.sinks :+ sink_sub
+            connect(conn_trace)
           } catch {
             case MonoConnectException(message) => throw MonoConnectException(s".$field$message")
           }
@@ -181,7 +214,7 @@ private[chisel3] object MonoConnect {
 
   // This function checks if element-level connection operation allowed.
   // Then it either issues it or throws the appropriate exception.
-  def elemConnect(implicit sourceInfo: SourceInfo, connectCompileOptions: CompileOptions, _sink: Element, _source: Element, context_mod: RawModule): Unit = {
+  def elemConnect(conn_trace: ConnTrace): Unit = {
     import BindingDirection.{Internal, Input, Output} // Using extensively so import these
     val sink = reify(_sink)
     val source = reify(_source)

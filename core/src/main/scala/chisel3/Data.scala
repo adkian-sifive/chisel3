@@ -473,7 +473,16 @@ abstract class Data extends HasId with NamedComponent with SourceInfoDoc {
         case _ =>  // fine
       }
       try {
-        MonoConnect.connect(sourceInfo, connectCompileOptions, this, that, Builder.referenceUserModule)
+        // val connTrace = new ConnTrace(sourceInfo, connectCompileOptions, this, that, Builder.referenceUserModule);
+        // connTrace.ports.sinks :+ this
+        // connTrace.ports.sources :+ that
+        // connTrace.sourceInfo := sourceInfo
+
+        MonoConnect.connect(new ConnTrace(sourceInfo, connectCompileOptions,
+          this, that, Builder.referenceUserModule))
+
+        // MonoConnect.connect(sourceInfo, connectCompileOptions, this, that,
+        //   Builder.referenceUserModule, connTrace)
       } catch {
         case MonoConnectException(message) =>
           throwException(
