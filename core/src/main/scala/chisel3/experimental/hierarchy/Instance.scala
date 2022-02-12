@@ -9,6 +9,7 @@ import chisel3.internal.BaseModule.{InstantiableClone, IsClone, ModuleClone}
 import chisel3.internal.sourceinfo.{InstanceTransform, SourceInfo}
 import chisel3.experimental.BaseModule
 import firrtl.annotations.IsModule
+import chisel3.internal.firrtl._
 
 /** User-facing Instance type.
   * Represents a unique instance of type [[A]] which are marked as @instantiable
@@ -63,7 +64,10 @@ final case class Instance[+A] private[chisel3] (private[chisel3] underlying: Und
   /** Returns the definition of this Instance */
   override def toDefinition: Definition[A] = new Definition(Proto(proto))
   override def toInstance:   Instance[A] = this
-
+  // def suggestName(name: String): Unit = {
+  //   // // val ports = experimental.CloneModuleAsRecord(definition.proto)
+  //   // proto._.asInstanceOf[ModuleClone[A]].suggestName(name)
+  // }
 }
 
 /** Factory methods for constructing [[Instance]]s */
@@ -86,6 +90,10 @@ object Instance extends SourceInfoDoc {
       case Clone(x: IsClone[_] with BaseModule) => x.toAbsoluteTarget
     }
 
+
+    def suggestName(name: String): Unit = {
+      i.getInnerDataContext.get.asInstanceOf[ModuleClone[T]].suggestName(name)
+    }
   }
 
   /** A constructs an [[Instance]] from a [[Definition]]
@@ -112,5 +120,4 @@ object Instance extends SourceInfoDoc {
     clone._madeFromDefinition = true
     new Instance(Clone(clone))
   }
-
 }

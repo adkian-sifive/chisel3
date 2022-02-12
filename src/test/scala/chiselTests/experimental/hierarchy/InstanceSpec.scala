@@ -1066,4 +1066,25 @@ class InstanceSpec extends ChiselFunSpec with Utils {
       getFirrtlAndAnnos(new HasMultipleTypeParamsInside, Seq(aspect))
     }
   }
+  it("11.1 suggestName for Instances") {
+    class Top extends Module {
+      // val modinst0 = Module(new AddOne)
+      // val modinst1 = Module(new AddOne)
+      // modinst0.suggestName("test1")
+      // modinst1.suggestName("test1")
+
+      val definition = Definition(new AddOne)
+      val inst0 = Instance(definition)
+      val inst1 = Instance(definition)
+      val inst2 = Instance(definition)
+      val inst3 = Instance(definition)
+
+      inst0.suggestName("halloballoo")
+      inst1.suggestName("halloballoo")
+      inst2.suggestName("inst3")
+    }
+    val (chirrtl, _) = getFirrtlAndAnnos(new Top)
+    println(chirrtl.serialize)
+    chirrtl.serialize should include("inst halloballoo of AddOne")
+  }
 }
